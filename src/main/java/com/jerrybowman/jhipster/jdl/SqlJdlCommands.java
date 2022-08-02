@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.sql.*;
 import java.util.ArrayList;
@@ -20,6 +22,11 @@ public class SqlJdlCommands {
 
     private String connectionUrl;
     private Connection dbConnection;
+
+    @PostConstruct
+    public void init() throws ClassNotFoundException {
+        Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+    }
 
     @PreDestroy
     public void shutdown() {
@@ -41,13 +48,11 @@ public class SqlJdlCommands {
         }
         connectionUrl = String.format(jdbcUrlTemplate, serverName, databaseName);
         LOG.info("Driver string: {}", connectionUrl);
-
-        Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
         dbConnection = DriverManager.getConnection(connectionUrl);
     }
 
     @ShellMethod("List table data.")
-    public void listTableData(boolean asJdl) throws SQLException {
+    public void listTableData(@ShellOption(defaultValue = "false") boolean asJdl) throws SQLException {
         try (Statement statement = dbConnection.createStatement()) {
             ResultSet rs = statement.executeQuery(listTableData);
             String lastTableName = "";
