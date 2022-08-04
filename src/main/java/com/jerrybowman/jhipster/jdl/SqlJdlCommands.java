@@ -56,8 +56,8 @@ public class SqlJdlCommands {
     }
 
     @ShellMethod("List table data.")
-    public void listTableData(@ShellOption(defaultValue = "false") boolean asJdl,
-                              @ShellOption(defaultValue = "") String filename) throws SQLException, FileNotFoundException {
+    public void listTableData(@ShellOption(defaultValue = "") String filename,
+                              @ShellOption(defaultValue = "false") boolean asJdl) throws SQLException, FileNotFoundException {
         try (Statement statement = dbConnection.createStatement()) {
             ResultSet rs = statement.executeQuery(listTableData);
             String lastTableName = "";
@@ -92,8 +92,8 @@ public class SqlJdlCommands {
         }
     }
 
-    private void printJdl(List<DatabaseTable> tableList, String fileName) throws FileNotFoundException {
-        PrintStream out = getPrintStream(fileName);
+    private void printJdl(List<DatabaseTable> tableList, String filename) throws FileNotFoundException {
+        PrintStream out = getPrintStream(filename);
         tableList.forEach(table -> {
             out.println("entity " + normalizeName(table.getName()) + " {");
             for (int i = 0; i < table.getColumnList().size(); i++) {
@@ -120,10 +120,10 @@ public class SqlJdlCommands {
         }
     }
 
-    private PrintStream getPrintStream(String fileName) throws FileNotFoundException {
+    private PrintStream getPrintStream(String filename) throws FileNotFoundException {
         PrintStream out = System.out;
-        if (StringUtils.isNotBlank(fileName)) {
-            out = new PrintStream(fileName);
+        if (StringUtils.isNotBlank(filename)) {
+            out = new PrintStream(filename);
         }
         return out;
     }
@@ -160,7 +160,7 @@ public class SqlJdlCommands {
         return "String";
     }
 
-    private void printTablesAndColumns(List<DatabaseTable> tableList, String fileName) throws FileNotFoundException {
+    private void printTablesAndColumns(List<DatabaseTable> tableList, String filename) throws FileNotFoundException {
         AtomicInteger tableNameLength = new AtomicInteger();
         AtomicInteger columnNameLength = new AtomicInteger();
         AtomicInteger dataTypeLength = new AtomicInteger();
@@ -207,7 +207,7 @@ public class SqlJdlCommands {
                     column.getConstraint().getConstraintColumnName()
                     ));
         });
-        PrintStream out = getPrintStream(fileName);
+        PrintStream out = getPrintStream(filename);
         out.println(fmt);
         out.println("Number of tables: " + tableList.size());
         closeIfNeeded(out);
