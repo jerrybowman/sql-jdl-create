@@ -1,5 +1,6 @@
 package com.jerrybowman.jhipster.jdl;
 
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.shell.standard.ShellComponent;
@@ -8,6 +9,9 @@ import org.springframework.shell.standard.ShellOption;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.PrintStream;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Formatter;
@@ -16,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @ShellComponent
 public class SqlJdlCommands {
-    private static Logger LOG = LoggerFactory.getLogger(SqlJdlCommands.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SqlJdlCommands.class);
 
     private static final String jdbcUrlTemplate = "jdbc:sqlserver://%s;database=%s;integratedSecurity=true;TrustServerCertificate=True";
 
@@ -42,7 +46,7 @@ public class SqlJdlCommands {
     }
 
     @ShellMethod("Connect to a SQL server.")
-    public void connectToServer(String serverName, String databaseName) throws ClassNotFoundException, SQLException {
+    public void connectToServer(String serverName, String databaseName) throws SQLException {
         if (dbConnection != null) {
             shutdown();
         }
@@ -52,7 +56,8 @@ public class SqlJdlCommands {
     }
 
     @ShellMethod("List table data.")
-    public void listTableData(@ShellOption(defaultValue = "false") boolean asJdl) throws SQLException {
+    public void listTableData(@ShellOption(defaultValue = "false") boolean asJdl,
+                              @ShellOption(defaultValue = "") String filename) throws SQLException, FileNotFoundException {
         try (Statement statement = dbConnection.createStatement()) {
             ResultSet rs = statement.executeQuery(listTableData);
             String lastTableName = "";
@@ -64,42 +69,63 @@ public class SqlJdlCommands {
                 String dataType = rs.getString("DATA_TYPE");
                 String characterMaximumLength = rs.getString("CHARACTER_MAXIMUM_LENGTH");
                 String constraintType = rs.getString("CONSTRAINT_TYPE");
+                String constraintTableName = rs.getString("C_TABLE_NAME");
+                String constraintColumnName = rs.getString("C_COLUMN_NAME");
                 if (!lastTableName.equals(tableName)) {
                     databaseTable = new DatabaseTable(tableName);
                     lastTableName = tableName;
                     tableList.add(databaseTable);
                 }
-                databaseTable.addColumn(new TableColumn(columnName, dataType, characterMaximumLength, constraintType));
+                databaseTable.addColumn(
+                        new TableColumn(
+                                columnName, dataType, characterMaximumLength, constraintType,
+                                new ColumnConstraint(constraintTableName, constraintColumnName)
+                        )
+                );
             }
             if (asJdl) {
-                printJdl(tableList);
+                printJdl(tableList, filename);
             } else {
-                printTablesAndColumns(tableList);
+                printTablesAndColumns(tableList, filename);
             }
 
         }
     }
 
-
-    private void printJdl(List<DatabaseTable> tableList) {
+    private void printJdl(List<DatabaseTable> tableList, String fileName) throws FileNotFoundException {
+        PrintStream out = getPrintStream(fileName);
         tableList.forEach(table -> {
-            System.out.println("entity " + normalizeName(table.getName()) + " {");
+            out.println("entity " + normalizeName(table.getName()) + " {");
             for (int i = 0; i < table.getColumnList().size(); i++) {
                 TableColumn column = table.getColumnList().get(i);
                 if (primaryKey(column)) continue;
-                System.out.print("    " + normalizeName(column.getName()) +
+                out.print("    " + normalizeName(column.getName()) +
                         " " + convertDataType(column.getDataType()));
                 if (column.getMaxSize() != null && !column.getMaxSize().equals("-1")) {
-                    System.out.print(" maxlength(" + column.getMaxSize() + ")");
+                    out.print(" maxlength(" + column.getMaxSize() + ")");
                 }
                 if (i == table.getColumnList().size() - 1) {
-                    System.out.println("\n}");
+                    out.println("\n}");
                 } else {
-                    System.out.println(",");
+                    out.println(",");
                 }
             }
-            ;
         });
+        closeIfNeeded(out);
+    }
+
+    private void closeIfNeeded(PrintStream out) {
+        if (out != System.out) {
+            out.close();
+        }
+    }
+
+    private PrintStream getPrintStream(String fileName) throws FileNotFoundException {
+        PrintStream out = System.out;
+        if (StringUtils.isNotBlank(fileName)) {
+            out = new PrintStream(fileName);
+        }
+        return out;
     }
 
     private boolean primaryKey(TableColumn column) {
@@ -134,11 +160,13 @@ public class SqlJdlCommands {
         return "String";
     }
 
-    private void printTablesAndColumns(List<DatabaseTable> tableList) {
+    private void printTablesAndColumns(List<DatabaseTable> tableList, String fileName) throws FileNotFoundException {
         AtomicInteger tableNameLength = new AtomicInteger();
         AtomicInteger columnNameLength = new AtomicInteger();
         AtomicInteger dataTypeLength = new AtomicInteger();
-        AtomicInteger maxSizeLength = new AtomicInteger(4);
+        AtomicInteger maxSizeLength = new AtomicInteger(10);
+        AtomicInteger constraintTableNameLength = new AtomicInteger(17);
+        AtomicInteger constraintTableColumnLength = new AtomicInteger(17);
         tableList.forEach(table -> {
             if (table.getName().length() > tableNameLength.get())
                 tableNameLength.set(table.getName().length());
@@ -151,26 +179,38 @@ public class SqlJdlCommands {
                         (column.getMaxSize().length() > maxSizeLength.get())) {
                     maxSizeLength.set(column.getMaxSize().length());
                 }
+                if ((column.getConstraint().getConstraintTableName() != null) &&
+                        (column.getConstraint().getConstraintTableName().length() > constraintTableNameLength.get())) {
+                    constraintTableNameLength.set(column.getConstraint().getConstraintTableName().length());
+                }
+                if ((column.getConstraint().getConstraintColumnName() != null) &&
+                        (column.getConstraint().getConstraintColumnName().length() > constraintTableColumnLength.get())) {
+                    constraintTableColumnLength.set(column.getConstraint().getConstraintColumnName().length());
+                }
             });
         });
         Formatter fmt = new Formatter();
         String format = "%-" + tableNameLength.get() +
                 "s %-" + columnNameLength.get() +
                 "s %-" + dataTypeLength.get() +
-                "s %" + maxSizeLength.get() + "s\n";
-        fmt.format(format, "TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "CHARACTER_MAXIMUM_LENGTH");
+                "s %" + maxSizeLength.get() +
+                "s %-" + constraintTableNameLength.get() +
+                "s %-" + constraintTableColumnLength.get() + "s\n";
+        fmt.format(format, "TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "MAX_LENGTH", "CONSTRAINT_TABLE", "CONSTRAINT_COLUMN");
         tableList.forEach(table -> {
             fmt.format(format,
-                    table.getName(), "", "", ""
+                    table.getName(), "", "", "", "", ""
             );
-            table.getColumnList().forEach(column -> {
-                fmt.format(format,
-                        "", column.getName(), column.getDataType(), column.getMaxSize()
-                );
-            });
+            table.getColumnList().forEach(column -> fmt.format(format,
+                    "", column.getName(), column.getDataType(), column.getMaxSize(),
+                    column.getConstraint().getConstraintTableName(),
+                    column.getConstraint().getConstraintColumnName()
+                    ));
         });
-        System.out.println(fmt);
-        System.out.println("Number of tables: " + tableList.size());
+        PrintStream out = getPrintStream(fileName);
+        out.println(fmt);
+        out.println("Number of tables: " + tableList.size());
+        closeIfNeeded(out);
     }
 
     private String normalizeName(String name) {
@@ -199,7 +239,8 @@ public class SqlJdlCommands {
 
     String listTableData = "SELECT 'sqlserver' dbms, " +
             "  t.TABLE_CATALOG, t.TABLE_SCHEMA, t.TABLE_NAME, c.COLUMN_NAME, c.ORDINAL_POSITION, c.DATA_TYPE, " +
-            "  c.CHARACTER_MAXIMUM_LENGTH, n.CONSTRAINT_TYPE, k2.TABLE_SCHEMA, k2.TABLE_NAME, k2.COLUMN_NAME" +
+            "  c.CHARACTER_MAXIMUM_LENGTH, n.CONSTRAINT_TYPE, " +
+            "  k2.TABLE_SCHEMA as C_TABLE_SCHEMA, k2.TABLE_NAME as C_TABLE_NAME, k2.COLUMN_NAME as C_COLUMN_NAME" +
             "    FROM INFORMATION_SCHEMA.TABLES t" +
             "    LEFT JOIN INFORMATION_SCHEMA.COLUMNS c" +
             "    ON t.TABLE_CATALOG=c.TABLE_CATALOG" +

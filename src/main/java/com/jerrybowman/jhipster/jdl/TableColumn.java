@@ -6,13 +6,20 @@ public class TableColumn {
     private final String name;
     private final String dataType;
     private final String maxSize;
-    private String constraintType;
+    private final String constraintType;
+    private ColumnConstraint constraint;
+
+    public TableColumn(String name, String dataType, String maxSize, String constraintType, ColumnConstraint constraint) {
+        this(name, dataType, maxSize, constraintType);
+        this.constraint = constraint;
+    }
 
     public TableColumn(String name, String dataType, String maxSize, String constraintType) {
         this.name = name;
         this.dataType = dataType;
         this.maxSize = maxSize;
         this.constraintType = constraintType;
+        this.constraint = null;
     }
 
     public String getName() {
@@ -31,17 +38,21 @@ public class TableColumn {
         return constraintType;
     }
 
+    public ColumnConstraint getConstraint() {
+        return constraint;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         TableColumn that = (TableColumn) o;
-        return Objects.equals(name, that.name) && Objects.equals(dataType, that.dataType) && Objects.equals(maxSize, that.maxSize) && Objects.equals(constraintType, that.constraintType);
+        return Objects.equals(name, that.name) && Objects.equals(dataType, that.dataType) && Objects.equals(maxSize, that.maxSize) && Objects.equals(constraintType, that.constraintType) && Objects.equals(constraint, that.constraint);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, dataType, maxSize, constraintType);
+        return Objects.hash(name, dataType, maxSize, constraintType, constraint);
     }
 
     @Override
@@ -51,6 +62,7 @@ public class TableColumn {
                 ", dataType='" + dataType + '\'' +
                 ", maxSize='" + maxSize + '\'' +
                 ", constraintType='" + constraintType + '\'' +
+                ", constraint=" + constraint +
                 '}';
     }
 }
